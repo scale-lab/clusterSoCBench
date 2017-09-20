@@ -1,0 +1,77 @@
+__global__ void CuKnlUpdateBottom(
+		const int xMax,
+		const int yMax,
+		const int depth,
+		double* buffer)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= xMax*depth) return;
+
+	int lines = gid/xMax;
+
+	int offset = xMax*HALO_PAD;
+
+	int fromIndex = offset+gid;
+	int toIndex = fromIndex-(1+lines*2)*xMax;
+	buffer[toIndex] = buffer[fromIndex];
+}
+
+__global__ void CuKnlUpdateTop(
+		const int xMax,
+		const int yMax,
+		const int depth,
+		double* buffer)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= xMax*depth) return;
+
+	int lines = gid/xMax;
+
+	int offset = xMax*(yMax-HALO_PAD);
+
+	int toIndex = offset+gid;
+	int fromIndex = toIndex-(1+lines*2)*xMax;
+	buffer[toIndex] = buffer[fromIndex];
+}
+
+__global__ void CuKnlUpdateLeft(
+		const int xMax,
+		const int yMax,
+		const int depth,
+		double* buffer)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= yMax*depth) return;
+
+	int flip = gid % depth;
+	int lines = gid/depth;
+
+	int offset = HALO_PAD 
+		+ lines*(xMax-depth);
+
+	int fromIndex = offset+gid;
+	int toIndex = fromIndex-(1+flip*2);
+
+	buffer[toIndex] = buffer[fromIndex];
+}
+
+__global__ void CuKnlUpdateRight(
+		const int xMax,
+		const int yMax,
+		const int depth,
+		double* buffer)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= yMax*depth) return;
+
+	int flip = gid % depth;
+	int lines = gid/depth;
+
+	int offset = xMax-HALO_PAD
+		+ lines*(xMax-depth);
+
+	int toIndex = offset+gid;
+	int fromIndex = toIndex-(1+flip*2);
+
+	buffer[toIndex] = buffer[fromIndex];
+}

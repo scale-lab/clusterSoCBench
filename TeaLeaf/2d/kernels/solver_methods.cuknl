@@ -1,0 +1,95 @@
+
+__global__ void CuKnlCopyU(
+		const int innerX,
+		const int innerY,
+		const int xMax,
+		const double* src,
+		double* dest)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY) return;
+
+	const int col = gid%innerX;
+	const int row = gid/innerX; 
+	const int off0 = HALO_PAD*(xMax+1);
+	const int index = off0+col+row*xMax;
+
+	dest[index] = src[index];	
+}
+
+__global__ void CuKnlCalculateResidual(
+		const int innerX,
+		const int innerY,
+		const int xMax,
+		const double* u,
+		const double* u0,
+		const double* Kx,
+		const double* Ky,
+		double* r)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY) return;
+
+	const int col = gid%innerX;
+	const int row = gid/innerX; 
+	const int off0 = HALO_PAD*(xMax+1);
+	const int index = off0+col+row*xMax;
+
+	const double smvp = SMVP(u);
+	r[index] = u0[index] - smvp;
+}
+
+__global__ void CuKnlCalculate2Norm(
+		const int innerX,
+		const int innerY,
+		const int xMax,
+		const double* src,
+		double* normOut)
+{
+	__shared__ double normShared[BLOCK_SIZE];
+	normShared[threadIdx.x] = 0.0;
+
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+
+	if(gid >= innerX*innerY) return;
+
+	const int col = gid%innerX;
+	const int row = gid/innerX; 
+	const int off0 = HALO_PAD*(xMax+1);
+	const int index = off0+col+row*xMax;
+
+	normShared[threadIdx.x] = src[index]*src[index];
+
+	Reduce<double, BLOCK_SIZE/2>::Run(normShared, normOut, SUM);
+}
+
+__global__ void CuKnlFinalise(
+		const int innerX,
+		const int innerY,
+		const int xMax,
+		const double* density,
+		const double* u,
+		double* energy)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY) return;
+
+	const int col = gid%innerX;
+	const int row = gid/innerX; 
+	const int off0 = HALO_PAD*(xMax+1);
+	const int index = off0+col+row*xMax;
+
+	energy[index] = u[index]/density[index];
+}
+
+__global__ void CuKnlSumReduce(
+		const int n,
+		double* buffer)
+{
+	__shared__ double bufferShared[BLOCK_SIZE];
+
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	bufferShared[threadIdx.x] = (gid < n) ? buffer[gid] : 0.0;
+
+	Reduce<double, BLOCK_SIZE/2>::Run(bufferShared, buffer, SUM);
+}

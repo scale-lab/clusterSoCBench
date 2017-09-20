@@ -1,0 +1,67 @@
+
+__global__ void CuKnlFieldSummary(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const double* volume,
+		const double* density,
+		const double* energy0,
+		const double* u,
+		double* volOut,
+		double* massOut,
+		double* ieOut,
+		double* tempOut)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	const int lid = threadIdx.x;
+
+	__shared__ double volShared[BLOCK_SIZE];
+	__shared__ double massShared[BLOCK_SIZE];
+	__shared__ double ieShared[BLOCK_SIZE];
+	__shared__ double tempShared[BLOCK_SIZE];
+
+	volShared[lid] = 0.0;
+	massShared[lid] = 0.0;
+	ieShared[lid] = 0.0;
+	tempShared[lid] = 0.0;
+
+	if(gid < xMax*yMax*zMax)
+	{
+		const int xCells = xMax+4;
+		const int yCells = yMax+4;
+		const int page = xCells*yCells;
+		const int col = gid%xMax;
+		const int row = (gid/xMax)%yMax; // Send inverse
+		const int slice = gid/(xMax*yMax); // Send inverse
+		const int off0 = HALO_PAD*(page+xCells+1);
+		const int index = off0+col+row*xCells+slice*page;
+
+		double cellVol = volume[index];
+		double cellMass = cellVol*density[index];
+		volShared[lid] = cellVol;
+		massShared[lid] = cellMass;
+		ieShared[lid] = cellMass*energy0[index];
+		tempShared[lid] = cellMass*u[index];
+	}
+
+	__syncthreads();
+
+#pragma unroll
+	for(int ii = BLOCK_SIZE/2; ii > 0; ii /= 2)
+	{
+		if(lid < ii)
+		{
+			volShared[lid] += volShared[lid+ii];
+			massShared[lid] += massShared[lid+ii];
+			ieShared[lid] += ieShared[lid+ii];
+			tempShared[lid] += tempShared[lid+ii];
+		}
+
+		__syncthreads();
+	}
+
+	volOut[blockIdx.x] = volShared[0];
+	massOut[blockIdx.x] = massShared[0];
+	ieOut[blockIdx.x] = ieShared[0];
+	tempOut[blockIdx.x] = tempShared[0];
+}

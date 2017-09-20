@@ -1,0 +1,90 @@
+
+__global__ void CuKnlChebyInitP(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const int xMax,
+		const int page,
+		const double* u,
+		const double* u0,
+		const double* Mi,
+		const double* Kx,
+		const double* Ky,
+		const double* Kz,
+		const double theta,
+		const bool preconditioner,
+		double* p,
+		double* r,
+		double* w)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY*innerZ) return;
+
+	const int col = gid%innerX;
+	const int row = (gid/innerX)%innerY; // Send inverse
+	const int slice = gid/(innerX*innerY); // Send inverse
+	const int off0 = HALO_PAD*(page+xMax+1);
+	const int index = off0+col+row*xMax+slice*page;
+
+	const double smvp = SMVP(u);
+	w[index] = smvp;
+	r[index] = u0[index]-w[index];
+	p[index] = (preconditioner ? Mi[index]*r[index] : r[index]) / theta;
+}
+
+__global__ void CuKnlChebyCalcU(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const int xMax,
+		const int page,
+		const double* p,
+		double* u)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY*innerZ) return;
+
+	const int col = gid%innerX;
+	const int row = (gid/innerX)%innerY; // Send inverse
+	const int slice = gid/(innerX*innerY); // Send inverse
+	const int off0 = HALO_PAD*(page+xMax+1);
+	const int index = off0+col+row*xMax+slice*page;
+
+	u[index] += p[index];
+}
+
+__global__ void CuKnlChebyCalcP(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const int xMax,
+		const int page,
+		const double* u,
+		const double* u0,
+		const double* Mi,
+		const double* Kx,
+		const double* Ky,
+		const double* Kz,
+		const double* alpha,
+		const double* beta,
+		const bool preconditioner,
+		const int step,
+		double* p,
+		double* r,
+		double* w)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY*innerZ) return;
+
+	const int col = gid%innerX;
+	const int row = (gid/innerX)%innerY; // Send inverse
+	const int slice = gid/(innerX*innerY); // Send inverse
+	const int off0 = HALO_PAD*(page+xMax+1);
+	const int index = off0+col+row*xMax+slice*page;
+
+	const double smvp = SMVP(u);
+	w[index] = smvp;
+	r[index] = u0[index]-w[index];
+	p[index] = alpha[step]*p[index] + beta[step] *
+		(preconditioner ? Mi[index]*r[index] : r[index]);
+}

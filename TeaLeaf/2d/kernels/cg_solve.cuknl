@@ -1,0 +1,197 @@
+
+__global__ void CuKnlCGInitU(
+		const int innerX,
+		const int innerY,
+		const int coefficient,
+		const double* density,
+		const double* energy1,
+		double* u,
+		double* p,
+		double* r,
+		double* d)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY) return;
+
+	const int index = gid;
+
+	p[index] = 0.0;
+	r[index] = 0.0;
+	u[index] = energy1[index]*density[index];
+
+	d[index] = (coefficient == CONDUCTIVITY)
+		? density[index] : 1.0/density[index];
+}
+
+__global__ void CuKnlCGInitDirections(
+		const int innerX,
+		const int innerY,
+		const int xMax,
+		const double* d,
+		double* Kx,
+		double* Ky,
+		double rx,
+		double ry)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY) return;
+
+	const int col = gid%innerX;
+	const int row = gid/innerX;
+	const int off0 = HALO_PAD*(xMax+1);
+	const int index = off0+col+row*xMax;
+
+	Kx[index] = rx*(d[index-1]+d[index])/(2.0*d[index-1]*d[index]);
+	Ky[index] = ry*(d[index-xMax]+d[index])/(2.0*d[index-xMax]*d[index]);
+}
+
+__global__ void CuKnlCGInitOthers(
+		const int innerX,
+		const int innerY,
+		const int xMax,
+		const double* u,
+		const double* Kx,
+		const double* Ky,
+		const bool preconditioner,
+		double* rro,
+		double* p,
+		double* r,
+		double* w,
+		double* Mi,
+		double* z)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	__shared__ double rroShared[BLOCK_SIZE];
+	rroShared[threadIdx.x] = 0.0;
+
+	if(gid < innerX*innerY)
+	{
+		const int col = gid%innerX;
+		const int row = gid/innerX;
+		const int off0 = HALO_PAD*(xMax+1);
+		const int index = off0+col+row*xMax;
+
+		const double smvp = SMVP(u);
+
+		w[index] = smvp;
+		r[index] = u[index]-w[index];
+
+		if(preconditioner)
+		{
+			Mi[index] = (1.0
+					+ (Kx[index+1]+Kx[index])
+					+ (Ky[index+xMax]+Ky[index]));
+			Mi[index] = 1.0/Mi[index];
+			z[index] = Mi[index]*r[index];
+			p[index] = z[index];
+			rroShared[threadIdx.x] = r[index]*z[index];
+		}
+		else
+		{
+			p[index] = r[index];
+			rroShared[threadIdx.x] = r[index]*r[index];
+		}
+	}
+
+	Reduce<double, BLOCK_SIZE/2>::Run(rroShared, rro, SUM);
+}
+
+__global__ void CuKnlCGCalcW(
+		const int innerX,
+		const int innerY,
+		const int xMax,
+		const double* Kx,
+		const double* Ky,
+		const double* p,
+		double* pw,
+		double* w)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	__shared__ double pwShared[BLOCK_SIZE];
+	pwShared[threadIdx.x] = 0.0;
+
+	if(gid < innerX*innerY)
+	{
+		const int col = gid%innerX;
+		const int row = gid/innerX;
+		const int off0 = HALO_PAD*(xMax+1);
+		const int index = off0+col+row*xMax;
+
+		const double smvp = SMVP(p);
+		w[index] = smvp;
+		pwShared[threadIdx.x] = w[index]*p[index];
+	}
+
+	Reduce<double, BLOCK_SIZE/2>::Run(pwShared, pw, SUM);
+}
+
+__global__ void CuKnlCGCalcUr(
+		const int innerX,
+		const int innerY,
+		const int xMax,
+		const bool preconditioner,
+		const double alpha,
+		const double* Mi,
+		const double* p,
+		const double* w,
+		double* u,
+		double* z,
+		double* r,
+		double* rrn)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	__shared__ double rrnShared[BLOCK_SIZE];
+	rrnShared[threadIdx.x] = 0.0;
+
+	if(gid < innerX*innerY)
+	{
+		const int col = gid%innerX;
+		const int row = gid/innerX;
+		const int off0 = HALO_PAD*(xMax+1);
+		const int index = off0+col+row*xMax;
+
+		u[index] += alpha*p[index];
+		r[index] -= alpha*w[index];
+
+		if(preconditioner)
+		{
+			z[index] = Mi[index]*r[index];
+			rrnShared[threadIdx.x]  = r[index]*z[index];
+		}
+		else
+		{
+			rrnShared[threadIdx.x]  = r[index]*r[index];
+		}
+	}
+
+	Reduce<double, BLOCK_SIZE/2>::Run(rrnShared, rrn, SUM);
+}
+
+__global__ void CuKnlCGCalcP(
+		const int innerX,
+		const int innerY,
+		const int xMax,
+		const bool preconditioner,
+		const double beta,
+		const double* r,
+		const double* z,
+		double* p)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY) return;
+
+	const int col = gid%innerX;
+	const int row = gid/innerX;
+	const int off0 = HALO_PAD*(xMax+1);
+	const int index = off0+col+row*xMax;
+
+	if(preconditioner)
+	{
+		p[index] = z[index] + beta*p[index];
+	}
+	else
+	{
+		p[index] = r[index] + beta*p[index];
+	}
+}
+

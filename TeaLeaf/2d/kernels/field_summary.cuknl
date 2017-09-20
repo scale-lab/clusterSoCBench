@@ -1,0 +1,48 @@
+
+__global__ void CuKnlFieldSummary(
+		const int xMax,
+		const int yMax,
+		const int innerX,
+		const int innerY,
+		const double* volume,
+		const double* density,
+		const double* energy0,
+		const double* u,
+		double* volOut,
+		double* massOut,
+		double* ieOut,
+		double* tempOut)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	const int lid = threadIdx.x;
+
+	__shared__ double volShared[BLOCK_SIZE];
+	__shared__ double massShared[BLOCK_SIZE];
+	__shared__ double ieShared[BLOCK_SIZE];
+	__shared__ double tempShared[BLOCK_SIZE];
+
+	volShared[lid] = 0.0;
+	massShared[lid] = 0.0;
+	ieShared[lid] = 0.0;
+	tempShared[lid] = 0.0;
+
+	if(gid < innerX*innerY)
+	{
+		const int col = gid%innerX;
+		const int row = gid/innerX; 
+		const int off0 = HALO_PAD*(xMax+1);
+		const int index = off0+col+row*xMax;
+
+		double cellVol = volume[index];
+		double cellMass = cellVol*density[index];
+		volShared[lid] = cellVol;
+		massShared[lid] = cellMass;
+		ieShared[lid] = cellMass*energy0[index];
+		tempShared[lid] = cellMass*u[index];
+	}
+
+	Reduce<double, BLOCK_SIZE/2>::Run(volShared, volOut, SUM);
+	Reduce<double, BLOCK_SIZE/2>::Run(massShared, massOut, SUM);
+	Reduce<double, BLOCK_SIZE/2>::Run(ieShared, ieOut, SUM);
+	Reduce<double, BLOCK_SIZE/2>::Run(tempShared, tempOut, SUM);
+}

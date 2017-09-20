@@ -1,0 +1,4 @@
+CAFFE_DIR=. #location of caffe classify.py
+IMAGE_DIR=. #location of imagenet
+MODEL_DIR=../models/googlenet  #locatiion of alexnet model
+python $CAFFE_DIR/python/classify.py $IMAGE_DIR/imagenet_val/ out $1 $2 --pretrained_model=$MODEL_DIR/googlenet.caffemodel --model_def=$MODEL_DIR/googlenet.prototxt --gpu

@@ -1,0 +1,88 @@
+
+__global__ void CuKnlPPCGInitSd(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const int xMax,
+		const int page,
+		const double theta,
+		const bool preconditioner,
+		const double* r,
+		const double* Mi,
+		double* sd)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY*innerZ) return;
+
+	const int col = gid%innerX;
+	const int row = (gid/innerX)%innerY; // Send inverse
+	const int slice = gid/(innerX*innerY); // Send inverse
+	const int off0 = HALO_PAD*(page+xMax+1);
+	const int index = off0+col+row*xMax+slice*page;
+
+	// NOTE: PRECONDITIONER IS NOT WORKING YET??
+	sd[index] = (preconditioner ? Mi[index]*r[index] : r[index]) / theta;
+}
+
+__global__ void CuKnlPPCGUpdateR(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const int xMax,
+		const int page,
+		const double* Kx,
+		const double* Ky,
+		const double* Kz,
+		const double* sd,
+		double* u,
+		double* r)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY*innerZ) return;
+
+	const int col = gid%innerX;
+	const int row = (gid/innerX)%innerY; // Send inverse
+	const int slice = gid/(innerX*innerY); // Send inverse
+	const int off0 = HALO_PAD*(page+xMax+1);
+	const int index = off0+col+row*xMax+slice*page;
+
+	const double smvp = (1.0
+			+ (Kx[index+1]+Kx[index])
+			+ (Ky[index+xMax]+Ky[index])
+			+ (Kz[index+page]+Kz[index]))*sd[index]
+		- (Kx[index+1]*sd[index+1]+Kx[index]*sd[index-1])
+		- (Ky[index+xMax]*sd[index+xMax]+Ky[index]*sd[index-xMax])
+		- (Kz[index+page]*sd[index+page]+Kz[index]*sd[index-page]);
+
+	r[index] -= smvp;
+	u[index] += sd[index];
+}
+
+__global__ void CuKnlPPCGCalcSd(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const int xMax,
+		const int page,
+		const int step,
+		const bool preconditioner,
+		const double* r,
+		const double* Mi,
+		const double* alpha,
+		const double* beta,
+		double* sd)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY*innerZ) return;
+
+	const int col = gid%innerX;
+	const int row = (gid/innerX)%innerY; // Send inverse
+	const int slice = gid/(innerX*innerY); // Send inverse
+	const int off0 = HALO_PAD*(page+xMax+1);
+	const int index = off0+col+row*xMax+slice*page;
+
+	// NOTE: PRECONDITIONER IS NOT WORKING YET??
+	sd[index] = alpha[step]*sd[index]+beta[step]*
+		(preconditioner ? Mi[index]*r[index] : r[index]);
+}
+

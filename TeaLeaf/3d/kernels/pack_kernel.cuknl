@@ -1,0 +1,394 @@
+__global__ void CuKnlPackBack(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		double* field,
+		double* buffer,
+		const int depth)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= innerY*innerX*depth) return;
+
+	int lines = gid/innerX;
+	int offset = xMax*yMax*HALO_PAD
+		+ xMax*HALO_PAD
+		+ HALO_PAD
+		+ lines*2*HALO_PAD
+		+ (lines/innerY)*xMax*2*HALO_PAD;
+
+	buffer[gid] = field[offset+gid];
+
+	//const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	//const int page = xMax*yMax;
+	//const int offset = HALO_PAD*page;
+	//const int gid = offset+gid;
+
+	//if(gid < page*depth)
+	//	buffer[gid] = field[gid];
+}
+
+__global__ void CuKnlPackFront(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		double* field,
+		double* buffer,
+		const int depth)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= innerY*innerX*depth) return;
+
+	int lines = gid/innerX;
+	int offset = xMax*yMax*(zMax-HALO_PAD-depth)
+		+ xMax*HALO_PAD
+		+ HALO_PAD
+		+ lines*2*HALO_PAD
+		+ (lines/innerY)*xMax*2*HALO_PAD;
+
+	buffer[gid] = field[offset+gid];
+
+	//const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	//const int page = xMax*yMax;
+	//const int offset = (zMax-(depth+HALO_PAD))*page;
+	//const int gid = offset+gid;
+
+	//if(gid < page*depth)
+	//	buffer[gid] = field[gid];
+}
+
+__global__ void CuKnlUnpackBack(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		double* field,
+		double* buffer,
+		const int depth)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= innerY*innerX*depth) return;
+
+	int lines = gid/innerX;
+	int offset = xMax*yMax*(HALO_PAD-depth)
+		+ xMax*HALO_PAD
+		+ HALO_PAD
+		+ lines*2*HALO_PAD
+		+ (lines/innerY)*xMax*2*HALO_PAD;
+
+	field[offset+gid] = buffer[gid];
+
+	//const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	//const int page = xMax*yMax;
+	//const int offset = (HALO_PAD-depth)*page;
+	//const int gid = offset+gid;
+
+	//if(gid < page*depth)
+	//	field[gid] = buffer[gid];
+}
+
+__global__ void CuKnlUnpackFront(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		double* field,
+		double* buffer,
+		const int depth)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= innerY*innerX*depth) return;
+
+	int lines = gid/innerX;
+	int offset = xMax*yMax*(zMax-HALO_PAD)
+		+ xMax*HALO_PAD
+		+ HALO_PAD
+		+ lines*2*HALO_PAD
+		+ (lines/innerY)*xMax*2*HALO_PAD;
+
+	field[offset+gid] = buffer[gid];
+
+	//const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	//const int page = xMax*yMax;
+	//const int offset = (zMax-HALO_PAD)*page;
+	//const int gid = offset+gid;
+
+	//if(gid < page*depth)
+	//	field[gid] = buffer[gid];
+}
+
+__global__ void CuKnlPackLeft(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		double* field,
+		double* buffer,
+		const int depth)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= innerY*innerZ*depth) return;
+
+	int lines = gid/depth;
+	int offset = 
+		xMax*yMax*HALO_PAD
+		+ xMax*HALO_PAD
+		+ HALO_PAD
+		+ lines *(xMax-depth)
+		+ (lines/innerY)*xMax*2*HALO_PAD;
+
+	buffer[gid] = field[offset+gid];
+
+	//const int gid = blockIdx.x*blockDim.x*blockDim.y+threadIdx.x+threadIdx.y;
+	//const int yLoc = blockIdx.x*blockDim.y+threadIdx.y;
+	//const int gid = HALO_PAD+yLoc*xMax+threadIdx.x;
+
+	//if(gid < xMax*yMax*zMax)
+	//	buffer[gid] = field[gid];
+}
+
+__global__ void CuKnlPackRight(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		double* field,
+		double* buffer,
+		const int depth)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= innerY*innerZ*depth) return;
+
+	int lines = gid/depth;
+	int offset = 
+		xMax*yMax*HALO_PAD
+		+ xMax*HALO_PAD
+		+ (xMax-HALO_PAD-depth)
+		+ lines *(xMax-depth)
+		+ (lines/innerY)*xMax*2*HALO_PAD;
+
+	buffer[gid] = field[offset+gid];
+
+	//const int gid = blockIdx.x*blockDim.x*blockDim.y+threadIdx.x+threadIdx.y;
+	//const int yLoc = blockIdx.x*blockDim.y+threadIdx.y;
+	//const int offset = xMax-(depth+HALO_PAD);
+	//const int gid = offset+yLoc*xMax+threadIdx.x;
+
+	//if(gid < xMax*yMax*zMax)
+	//	buffer[gid] = field[gid];
+}
+
+__global__ void CuKnlUnpackLeft(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		double* field,
+		double* buffer,
+		const int depth)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= innerY*innerZ*depth) return;
+
+	int lines = gid/depth;
+	int offset = 
+		xMax*yMax*HALO_PAD
+		+ xMax*HALO_PAD
+		+ (HALO_PAD-depth)
+		+ lines *(xMax-depth)
+		+ (lines/innerY)*xMax*2*HALO_PAD;
+	field[offset+gid] = buffer[gid];
+
+	//const int gid = blockIdx.x*blockDim.x*blockDim.y+threadIdx.x+threadIdx.y;
+	//const int yLoc = blockIdx.x*blockDim.y+threadIdx.y;
+	//const int offset = (HALO_PAD-depth);
+	//const int gid = offset+yLoc*xMax+threadIdx.x;
+
+	//if(gid < xMax*yMax*zMax)
+	//	field[gid] = buffer[gid];
+}
+
+__global__ void CuKnlUnpackRight(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		double* field,
+		double* buffer,
+		const int depth)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= innerY*innerZ*depth) return;
+
+	int lines = gid/depth;
+	int offset = 
+		xMax*yMax*HALO_PAD
+		+ xMax*HALO_PAD
+		+ xMax-HALO_PAD
+		+ lines *(xMax-depth)
+		+ (lines/innerY)*xMax*2*HALO_PAD;
+
+	field[offset+gid] = buffer[gid];
+
+	//const int gid = blockIdx.x*blockDim.x*blockDim.y+threadIdx.x+threadIdx.y;
+	//const int yLoc = blockIdx.x*blockDim.y+threadIdx.y;
+	//const int offset = xMax-HALO_PAD;
+	//const int gid = offset+yLoc*xMax+threadIdx.x;
+
+	//if(gid < xMax*yMax*zMax)
+	//	field[gid] = buffer[gid];
+}
+
+__global__ void CuKnlPackTop(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		double* field,
+		double* buffer,
+		const int depth)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= innerZ*innerX*depth) return;
+
+	int lines = gid/innerX;
+	int offset = 
+		xMax*yMax*HALO_PAD
+		+ xMax*(yMax-HALO_PAD-depth)
+		+ HALO_PAD
+		+ lines*2*HALO_PAD
+		+ xMax*(yMax-depth)*(lines/depth);
+	buffer[gid] = field[offset+gid];
+
+	//const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	//const int page = xMax*yMax;
+	//const int xLoc = gid%(depth*xMax);
+	//const int zLoc = gid/(depth*xMax);
+	//const int offset = (yMax-(depth+HALO_PAD))*xMax;
+	//const int gid = offset+zLoc*page+xLoc;
+
+	//if(gid < page*zMax)
+	//	buffer[gid] = field[gid];
+}
+
+__global__ void CuKnlPackBottom(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		double* field,
+		double* buffer,
+		const int depth)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= innerZ*innerX*depth) return;
+
+	int lines = gid/innerX;
+	int offset = 
+		xMax*yMax*HALO_PAD
+		+ xMax*HALO_PAD
+		+ HALO_PAD
+		+ lines*2*HALO_PAD
+		+ xMax*(yMax-depth)*(lines/depth);
+
+	buffer[gid] = field[offset+gid];
+
+	//const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	//const int page = xMax*yMax;
+	//const int xLoc = gid%(depth*xMax);
+	//const int zLoc = gid/(depth*xMax);
+	//const int gid = HALO_PAD*xMax+zLoc*page+xLoc;
+
+	//if(gid < page*zMax)
+	//	buffer[gid] = field[gid];
+}
+
+__global__ void CuKnlUnpackTop(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		double* field,
+		double* buffer,
+		const int depth)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= innerZ*innerX*depth) return;
+
+	int lines = gid/innerX;
+	int offset = 
+		xMax*yMax*HALO_PAD
+		+ xMax*(yMax-HALO_PAD)
+		+ HALO_PAD
+		+ lines*2*HALO_PAD
+		+ xMax*(yMax-depth)*(lines/depth);
+
+	field[offset+gid] = buffer[gid];
+
+	//const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	//const int page = xMax*yMax;
+	//const int xLoc = gid%(depth*xMax);
+	//const int zLoc = gid/(depth*xMax);
+	//const int gid = (yMax-HALO_PAD)*xMax+zLoc*page+xLoc;
+
+	//if(gid < page*zMax)
+	//	field[gid] = buffer[gid];
+}
+
+__global__ void CuKnlUnpackBottom(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		double* field,
+		double* buffer,
+		const int depth)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	if(gid >= innerZ*innerX*depth) return;
+
+	int lines = gid/innerX;
+	int offset = xMax*yMax*HALO_PAD
+		+ xMax*(HALO_PAD-depth)
+		+ HALO_PAD
+		+ lines*2*HALO_PAD
+		+ xMax*(yMax-depth)*(lines/depth);
+
+	field[offset+gid] = buffer[gid];
+
+	//const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	//const int page = xMax*yMax;
+	//const int block = depth*xMax;
+	//const int xLoc = gid%block;
+	//const int zLoc = gid/block;
+	//const int offset = (HALO_PAD-depth)*xMax;
+	//const int gid = offset+zLoc*page+xLoc;
+
+	//if(gid < page*zMax)
+	//	field[gid] = buffer[gid];
+}

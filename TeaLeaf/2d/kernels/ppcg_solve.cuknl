@@ -1,0 +1,70 @@
+
+__global__ void CuKnlPPCGInitSd(
+		const int innerX,
+		const int innerY,
+		const int xMax,
+		const double theta,
+		const bool preconditioner,
+		const double* r,
+		const double* Mi,
+		double* sd)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY) return;
+
+	const int col = gid%innerX;
+	const int row = gid/innerX; 
+	const int off0 = HALO_PAD*(xMax+1);
+	const int index = off0+col+row*xMax;
+
+	sd[index] = (preconditioner ? Mi[index]*r[index] : r[index]) / theta;
+}
+
+__global__ void CuKnlPPCGUpdateR(
+		const int innerX,
+		const int innerY,
+		const int xMax,
+		const double* Kx,
+		const double* Ky,
+		const double* sd,
+		double* u,
+		double* r)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY) return;
+
+	const int col = gid%innerX;
+	const int row = gid/innerX; 
+	const int off0 = HALO_PAD*(xMax+1);
+	const int index = off0+col+row*xMax;
+
+	const double smvp = SMVP(sd);
+	r[index] -= smvp;
+	u[index] += sd[index];
+}
+
+__global__ void CuKnlPPCGCalcSd(
+		const int innerX,
+		const int innerY,
+		const int xMax,
+		const int step,
+		const bool preconditioner,
+		const double* r,
+		const double* Mi,
+		const double* alpha,
+		const double* beta,
+		double* sd)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY) return;
+
+	const int col = gid%innerX;
+	const int row = gid/innerX; 
+	const int off0 = HALO_PAD*(xMax+1);
+	const int index = off0+col+row*xMax;
+
+	// NOTE: PRECONDITIONER IS NOT WORKING YET??
+	sd[index] = alpha[step]*sd[index]+beta[step]*
+		(preconditioner ? Mi[index]*r[index] : r[index]);
+}
+

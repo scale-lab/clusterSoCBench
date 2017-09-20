@@ -1,0 +1,96 @@
+
+__global__ void CuKnlGenerateInitial(
+		const int numCells,		
+		const double defaultEnergy, 
+		const double defaultDensity, 
+		double* energy0,
+	   	double* density)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+
+	if(gid < numCells)
+	{
+		energy0[gid]=defaultEnergy;
+		density[gid]=defaultDensity;
+	}
+}	
+
+__global__ void CuKnlGenerateChunk(
+		const int xMax,
+		const int yMax,
+		const int zMax,
+		const int state,
+		const int rectParam,
+		const int circParam,
+		const int pointParam,
+		double* u,
+		double* energy0,
+		double* density,
+		const double stateEnergy,
+		const double stateDensity,
+		const int stateGeometry,
+		const double stateRadius,
+		const double stateXMin,
+		const double stateYMin,
+		const double stateZMin,
+		const double stateXMax,
+		const double stateYMax,
+		const double stateZMax,
+		const double* vertexX,
+		const double* vertexY,
+		const double* vertexZ,
+		const double* cellX,
+		const double* cellY,
+		const double* cellZ)
+{
+	const int gid = threadIdx.x+blockDim.x*blockIdx.x;
+	const int page = xMax*yMax;
+	const int xLoc = gid%xMax;
+	const int yLoc = (gid/xMax)%yMax;
+	const int zLoc = gid/page;
+	int applyState = 0;
+
+	if(zLoc < zMax)
+	{
+		if(stateGeometry == rectParam) // Rectangular state
+		{
+			applyState = (
+					vertexX[xLoc+1] >= stateXMin && 
+					vertexX[xLoc] < stateXMax    &&
+					vertexY[yLoc+1] >= stateYMin &&
+					vertexY[yLoc] < stateYMax 	 &&
+					vertexZ[zLoc+1] >= stateZMin &&
+					vertexZ[zLoc] < stateZMax);
+		}
+		else if(stateGeometry == circParam) // Circular state
+		{
+			double radius = sqrt(
+					(cellX[xLoc]-stateXMin)*(cellX[xLoc]-stateXMin)+
+					(cellY[yLoc]-stateYMin)*(cellY[yLoc]-stateYMin)+
+					(cellZ[zLoc]-stateZMin)*(cellZ[zLoc]-stateZMin));
+
+			applyState = (radius <= stateRadius);
+		}
+		else if(stateGeometry == pointParam) // Point state
+		{
+			applyState = (
+					vertexX[xLoc] == stateXMin &&
+					vertexY[yLoc] == stateYMin &&
+					vertexZ[zLoc] == stateZMin);
+		}
+
+		// Check if state applies at this vertex, and apply
+		if(applyState)
+		{
+			energy0[gid] = stateEnergy;
+			density[gid] = stateDensity;
+		}
+	}
+
+	if(xLoc > 0 && xLoc < xMax-1 && 
+			yLoc > 0 && yLoc < yMax-1 && 
+			zLoc > 0 && zLoc < zMax-1)
+	{
+		u[gid]=energy0[gid]*density[gid];
+	}
+}

@@ -1,0 +1,112 @@
+
+__global__ void CuKnlCopyU(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const int xMax,
+		const int page,
+		const double* src,
+		double* dest)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY*innerZ) return;
+
+	const int col = gid%innerX;
+	const int row = (gid/innerX)%innerY; // Send inverse
+	const int slice = gid/(innerX*innerY); // Send inverse
+	const int off0 = HALO_PAD*(page+xMax+1);
+	const int index = off0+col+row*xMax+slice*page;
+
+	dest[index] = src[index];	
+}
+
+__global__ void CuKnlCalculateResidual(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const int xMax,
+		const int page,
+		const double* u,
+		const double* u0,
+		const double* Kx,
+		const double* Ky,
+		const double* Kz,
+		double* r)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY*innerZ) return;
+
+	const int col = gid%innerX;
+	const int row = (gid/innerX)%innerY; // Send inverse
+	const int slice = gid/(innerX*innerY); // Send inverse
+	const int off0 = HALO_PAD*(page+xMax+1);
+	const int index = off0+col+row*xMax+slice*page;
+
+	const double smvp = SMVP(u);
+	r[index] = u0[index] - smvp;
+}
+
+__global__ void CuKnlCalculate2Norm(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const int xMax,
+		const int page,
+		const double* src,
+		double* normOut)
+{
+	__shared__ double normShared[BLOCK_SIZE];
+
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+
+	if(gid < innerX*innerY*innerZ)
+	{
+		const int col = gid%innerX;
+		const int row = (gid/innerX)%innerY; // Send inverse
+		const int slice = gid/(innerX*innerY); // Send inverse
+		const int off0 = HALO_PAD*(page+xMax+1);
+		const int index = off0+col+row*xMax+slice*page;
+
+		normShared[threadIdx.x] = src[index]*src[index];
+	}
+	else
+	{
+		normShared[threadIdx.x] = 0.0;
+	}
+
+	Reduce<double, BLOCK_SIZE/2>::Run(normShared, normOut, SUM);
+}
+
+__global__ void CuKnlFinalise(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const int xMax,
+		const int page,
+		const double* density,
+		const double* u,
+		double* energy)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY*innerZ) return;
+
+	const int col = gid%innerX;
+	const int row = (gid/innerX)%innerY; // Send inverse
+	const int slice = gid/(innerX*innerY); // Send inverse
+	const int off0 = HALO_PAD*(page+xMax+1);
+	const int index = off0+col+row*xMax+slice*page;
+
+	energy[index] = u[index]/density[index];
+}
+
+__global__ void CuKnlSumReduce(
+		const int n,
+		double* buffer)
+{
+	__shared__ double bufferShared[BLOCK_SIZE];
+
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	bufferShared[threadIdx.x] = (gid < n) ? buffer[gid] : 0.0;
+
+	Reduce<double, BLOCK_SIZE/2>::Run(bufferShared, buffer, SUM);
+}

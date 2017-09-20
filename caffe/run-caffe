@@ -1,0 +1,2 @@
+#!/bin/bash
+time python /home/scale/caffe-gpu/python/classify.py /home/scale/imagenet_val/ out 1 1000 --pretrained_model=/home/scale/models/alexnet/alexnet.caffemodel --gpu

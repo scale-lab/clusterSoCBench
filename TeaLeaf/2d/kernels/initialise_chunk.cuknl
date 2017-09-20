@@ -1,0 +1,74 @@
+
+__global__ void CuKnlInitialiseChunkVertices(
+		const int xMax,
+		const int yMax,
+		const double xMin,
+		const double yMin,
+		const double dx,
+		const double dy,
+		double* vertexX,
+		double* vertexY,
+		double* vertexDx,
+		double* vertexDy)
+{
+	const int pad = HALO_PAD;
+	const int gid = blockIdx.x*blockDim.x+threadIdx.x;
+
+	if(gid < xMax+1)
+	{
+		vertexX[gid]= xMin+dx*(gid-pad);
+		vertexDx[gid] = dx;
+	}
+
+	if(gid < yMax+1)
+	{
+		vertexY[gid] = yMin+dy*(gid-pad);
+		vertexDy[gid] = dy;
+	}
+}
+
+__global__ void CuKnlInitialiseChunk(
+		const int xMax,
+		const int yMax,
+		const double dx,
+		const double dy,
+		double* vertexX,
+		double* vertexY,
+		double* cellX,
+		double* cellY,
+		double* cellDx,
+		double* cellDy,
+		double* volume,
+		double* xArea,
+		double* yArea)
+{
+	const int gid = blockIdx.x*blockDim.x+threadIdx.x;
+	const int numCells = xMax*yMax;
+
+	if(gid < xMax)
+	{
+		cellX[gid] = 0.5*(vertexX[gid]+vertexX[gid+1]);
+		cellDx[gid] = dx;
+	}
+
+	if(gid < yMax)
+	{
+		cellY[gid] = 0.5*(vertexY[gid]+vertexY[gid+1]);
+		cellDy[gid] = dy;
+	}
+
+	if(gid < numCells)
+	{
+		volume[gid] = dx*dy;
+	}
+
+	if(gid < numCells+yMax)
+	{
+		xArea[gid] = dy;
+	}
+
+	if(gid < numCells+xMax)
+	{
+		yArea[gid] = dx;
+	}
+}

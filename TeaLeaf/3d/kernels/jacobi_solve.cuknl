@@ -1,0 +1,119 @@
+#include "cudaknl_shared.hpp"
+
+// Core computation for Jacobi solver.
+__global__ void CuKnlJacobiSolve(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const int xMax,
+		const int page,
+		const double* Kx,
+		const double* Ky,
+		const double* Kz,
+		const double* u0,
+		const double* r,
+		double* u,
+		double* error)
+{
+	__shared__ double errorLocal[BLOCK_SIZE];
+
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	const int col = gid%innerX;
+	const int row = (gid/innerX)%innerY; // Send inverse
+	const int slice = gid/(innerX*innerY); // Send inverse
+	const int off0 = HALO_PAD*(page+xMax+1);
+	const int index = off0+col+row*xMax+slice*page;
+
+	if(gid < innerX*innerY*innerZ)
+	{
+		u[index] = (u0[index] 
+				+ Kx[index+1]*r[index+1] 
+				+ Kx[index]*r[index-1]
+				+ Ky[index+xMax]*r[index+xMax] 
+				+ Ky[index]*r[index-xMax]
+				+ Kz[index+page]*r[index+page] 
+				+ Kz[index]*r[index-page])
+			/ (1.0 + (Kx[index]+Kx[index+1])
+					+ (Ky[index]+Ky[index+xMax])
+					+ (Kz[index]+Kz[index+page]));
+
+		errorLocal[threadIdx.x] = fabs(u[index]-r[index]);
+	}
+	else
+	{
+		errorLocal[threadIdx.x] = 0.0;
+	}
+
+	Reduce<double, BLOCK_SIZE/2>::Run(errorLocal, error, SUM);
+}
+
+__global__ void CuKnlJacobiInit(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const int xMax,
+		const int page,
+		const double* density,
+		const double* energy,
+		const double rx,
+		const double ry,
+		const double rz,
+		double* Kx,
+		double* Ky,
+		double* Kz,
+		double* u0,
+		double* u,
+		const int coefficient)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+	if(gid >= innerX*innerY*innerZ) return;
+
+	const int col = gid%innerX;
+	const int row = (gid/innerX)%innerY; // Send inverse
+	const int slice = gid/(innerX*innerY); // Send inverse
+	const int off0 = page+xMax+1;
+	const int index = off0+col+row*xMax+slice*page;
+
+	const double uTemp = energy[index]*density[index];
+	u0[index] = uTemp;
+	u[index] = uTemp;
+
+	if(row == 0 || col == 0 || slice == 0) return; 
+
+	double densityCentre;
+	double densityLeft;
+	double densityDown;
+	double densityBack;
+
+	if(coefficient == CONDUCTIVITY)
+	{
+		densityCentre = density[index];
+		densityLeft = density[index-1];
+		densityDown = density[index-xMax];
+		densityBack = density[index-page];
+	}
+	else if(coefficient == RECIP_CONDUCTIVITY)
+	{
+		densityCentre = 1.0/density[index];
+		densityLeft = 1.0/density[index-1];
+		densityDown = 1.0/density[index-xMax];
+		densityBack = 1.0/density[index-page];
+	}
+
+	Kx[index] = rx*(densityLeft+densityCentre)/(2.0*densityLeft*densityCentre);
+	Ky[index] = ry*(densityDown+densityCentre)/(2.0*densityDown*densityCentre);
+	Kz[index] = rz*(densityBack+densityCentre)/(2.0*densityBack*densityCentre);
+}
+
+__global__ void CuKnlJacobiCopyU(
+		const int innerX,
+		const int innerY,
+		const int innerZ,
+		const double* src,
+		double* dest)
+{
+	const int gid = threadIdx.x+blockIdx.x*blockDim.x;
+
+	if(gid < innerX*innerY*innerZ)
+		dest[gid] = src[gid];	
+}
