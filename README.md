@@ -17,7 +17,8 @@ TeaLeaf: [https://github.com/UK-MAC/TeaLeaf]
 CloverLeaf: [https://github.com/UK-MAC/CloverLeaf]
 
 Jacobi: [https://github.com/parallel-forall/code-samples/tree/master/posts/cuda-aware-mpi-example/src]
-  
+
+Caffe: [https://github.com/BVLC/caffe]
 
 # Contacts
 If you use any of our ideas, please cite our paper.  Our contact information is:  
