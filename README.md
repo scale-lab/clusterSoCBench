@@ -1,7 +1,7 @@
 # clusterSoCBench
 clusterSoCBench is a collection of benchmarks ported to ARM that can be used to evaluate the CPU+GPGPU performance of an ARM-based cluster.
 
-For more details please visit our publication avialable here as paper.pdf:
+For more details please visit our publication available here as paper.pdf:
 
 R. Azimi, T. Fox and S. Reda, "Understanding the Role of GPGPU-accelerated SoC-based ARM Clusters", to appear in IEEE Cluster 2017.
 
